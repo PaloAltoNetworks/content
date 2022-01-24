@@ -112,19 +112,22 @@ POC_EMAIL_PATTERN = r"^\S+@\S+$"
 DEPRECATED_COMMANDS = {"expanse-get-risky-flows", "expanse-list-risk-rules"}
 """ CLIENT CLASS """
 
-
+# """todo add funtionality to get bearer token with client credentials"""
 class Client(BaseClient):
     """Client class to interact with the Expanse API"""
 
     def __init__(
-            self, base_url: str, api_key: str, verify: bool, proxy: bool, **kwargs
+            self, base_url: str, api_key: str, client_secret: str, client_id: str, verify: bool, proxy: bool, **kwargs
     ):
         self.api_key = api_key
+        self.client_secret = client_secret
+        self.client_id = client_id
         hdr = {
             "Content-Type": "application/json",
             "Accept": "application/json",
             "User-Agent": "Expanse_XSOAR/1.10.0",
         }
+
         super().__init__(base_url, verify=verify, proxy=proxy, headers=hdr, **kwargs)
 
     def _paginate(self, method: str, url_suffix: str,
@@ -159,7 +162,46 @@ class Client(BaseClient):
         """
         return datetime.utcnow()
 
-    def authenticate(self) -> None:
+    def authenticate_with_client_creds(self) -> None:
+        """
+        Perform authentication using API_KEY,
+        stores token and stored timestamp in integration context,
+        retrieves new token when expired
+        """
+        current_utc_timestamp = int(self._get_utcnow().timestamp())
+
+        stored_token = demisto.getIntegrationContext()
+        if (
+                isinstance(stored_token, dict)
+                and "token" in stored_token
+                and "expires" in stored_token
+                and current_utc_timestamp < int(stored_token["expires"])
+        ):
+            self._headers['Authorization'] = f'Bearer {stored_token["token"]}'
+        else:
+            # fetch new token
+            url = "https://api.paloaltonetworks.com/api/oauth2/RequestToken"
+            hdr = self._headers.copy()
+            body = {
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+                "grant_type": "client_credentials",
+                "scope": "scope-xpanse"
+            }
+
+
+            r = self._http_request('POST', url, headers=hdr,json_data = body)
+            if isinstance(r, dict) and r.get("access_token", None) is None:
+                raise ValueError("Authorization failed")
+
+            token_expiration = current_utc_timestamp + 3599
+
+            self._headers['Authorization'] = f'Bearer {r["access_token"]}'
+            demisto.setIntegrationContext(
+                {"token": r["access_token"], "expires": token_expiration}
+            )
+
+    def authenticate_with_key(self) -> None:
         """
         Perform authentication using API_KEY,
         stores token and stored timestamp in integration context,
@@ -2545,16 +2587,23 @@ def main() -> None:
     args = demisto.args()
     command = demisto.command()
     api_key = params.get("apikey")
+    client_secret = params.get("clientSecret")
+    client_id = params.get("clientId")
     base_url = urljoin(params.get("url", "").rstrip("/"), "/api")
     verify_certificate = not params.get("insecure", False)
     proxy = params.get("proxy", False)
 
     try:
-        client = Client(
-            api_key=api_key, base_url=base_url, verify=verify_certificate, proxy=proxy
-        )
+        if api_key is not null:
+            client = Client(
+                api_key=api_key, base_url=base_url, verify=verify_certificate, proxy=proxy
+            )
 
-        client.authenticate()
+            client.authenticate_with_key()
+        elif client_id & client_secret is not null:
+            client = Client(
+                client_secret=client_secret, client_id=client_id, base_url=base_url, verify=verify_certificate, proxy=proxy
+            )
 
         if command == "test-module":
             result = test_module(client)

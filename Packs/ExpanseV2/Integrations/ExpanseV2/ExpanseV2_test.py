@@ -54,7 +54,7 @@ def test_authentication_notcached(mocker, requests_mock):
 
     mocker.patch.object(client, "_get_utcnow", return_value=MOCK_NOW_DT)
 
-    client.authenticate()
+    client.authenticate_with_key()
 
     assert mock_get_ic.call_count == 1
     assert mock_set_ic.call_count == 1
@@ -82,7 +82,7 @@ def test_authentication_invalid_token(requests_mock):
     client = Client(api_key="key", base_url="https://example.com/api/", verify=True, proxy=False)
 
     try:
-        client.authenticate()
+        client.authenticate_with_key()
     except ValueError as e:
         assert str(e) == "Authorization failed"
 
@@ -121,7 +121,7 @@ def test_authentication_cached_valid(mocker, requests_mock):
 
     mocker.patch.object(client, "_get_utcnow", return_value=MOCK_NOW_DT)
 
-    client.authenticate()
+    client.authenticate_with_key()
 
     assert mock_get_ic.call_count == 1
     assert mock_set_ic.call_count == 0
@@ -164,7 +164,7 @@ def test_authentication_cached_expired(mocker, requests_mock):
 
     mocker.patch.object(client, "_get_utcnow", return_value=MOCK_NOW_DT)
 
-    client.authenticate()
+    client.authenticate_with_key()
 
     assert mock_get_ic.call_count == 1
     assert mock_set_ic.call_count == 1
